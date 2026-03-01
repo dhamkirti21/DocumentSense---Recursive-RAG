@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Recursive RAG</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body
+    class="bg-gradient-to-br from-slate-900 to-slate-800 min-h-screen text-gray-100 flex items-center justify-center p-6">
+
+    <div class="w-full max-w-4xl bg-slate-900/70 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-slate-700">
+
+        <h1 class="text-3xl font-bold mb-6 text-center tracking-wide">
+            Recursive RAG
+        </h1>
+
+        <!-- Upload Section -->
+        <div id="uploadSection">
+
+            <label class="block mb-2 text-sm text-gray-400">
+                Upload Research Paper (PDF/TXT • Max 5MB)
+            </label>
+
+            <div id="dropZone"
+                class="border-2 border-dashed border-slate-600 rounded-xl p-6 text-center cursor-pointer hover:border-blue-500 transition">
+                <p class="text-gray-400">Drag & drop file here or click to select</p>
+                <input type="file" id="fileInput" accept=".pdf,.txt" class="hidden">
+            </div>
+
+            <button id="uploadBtn" onclick="uploadFile()"
+                class="mt-4 w-full bg-blue-600 hover:bg-blue-700 transition rounded-lg py-2 font-semibold">
+                Upload & Index
+            </button>
+
+            <div id="uploadStatus" class="mt-3 text-sm"></div>
+        </div>
+
+        <!-- Query Section -->
+        <div id="querySection" class="hidden mt-8">
+
+            <div class="border-t border-slate-700 pt-6">
+
+                <label class="block mb-2 text-sm text-gray-400">
+                    Ask a Question
+                </label>
+
+                <div class="flex gap-3">
+                    <input id="question" type="text" placeholder="Enter your question..."
+                        class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                    <button id="askBtn" onclick="askQuestion()"
+                        class="bg-emerald-600 hover:bg-emerald-700 transition px-6 rounded-lg font-semibold">
+                        Ask
+                    </button>
+                </div>
+
+                <div id="queryStatus" class="mt-3 text-sm"></div>
+
+                <!-- History -->
+                <div id="history" class="mt-6 space-y-4 max-h-96 overflow-y-auto pr-2">
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let selectedFile = null;
+        let isUploading = false;
+        let isQuerying = false;
+
+        const dropZone = document.getElementById("dropZone");
+        const fileInput = document.getElementById("fileInput");
+
+        dropZone.addEventListener("click", () => fileInput.click());
+
+        fileInput.addEventListener("change", () => {
+            selectedFile = fileInput.files[0];
+            dropZone.innerHTML = `<p class="text-blue-400">${selectedFile.name}</p>`;
+        });
+
+        dropZone.addEventListener("dragover", e => {
+            e.preventDefault();
+            dropZone.classList.add("border-blue-500");
+        });
+
+        dropZone.addEventListener("dragleave", () => {
+            dropZone.classList.remove("border-blue-500");
+        });
+
+        dropZone.addEventListener("drop", e => {
+            e.preventDefault();
+            dropZone.classList.remove("border-blue-500");
+            selectedFile = e.dataTransfer.files[0];
+            fileInput.files = e.dataTransfer.files;
+            dropZone.innerHTML = `<p class="text-blue-400">${selectedFile.name}</p>`;
+        });
+
+        async function uploadFile() {
+            if (isUploading || !selectedFile) return;
+
+            const status = document.getElementById("uploadStatus");
+            const btn = document.getElementById("uploadBtn");
+
+            if (selectedFile.size > 5 * 1024 * 1024) {
+                status.innerHTML = `<span class="text-red-400">File exceeds 5MB limit.</span>`;
+                return;
+            }
+
+            isUploading = true;
+            btn.disabled = true;
+            btn.classList.add("opacity-50");
+            status.innerHTML = spinner("Indexing document...");
+
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+
+            try {
+                const response = await fetch("/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    status.innerHTML = `<span class="text-red-400">${data.detail}</span>`;
+                } else {
+                    status.innerHTML = `<span class="text-green-400">${data.message}</span>`;
+                    document.getElementById("querySection").classList.remove("hidden");
+                }
+
+            } catch {
+                status.innerHTML = `<span class="text-red-400">Upload failed.</span>`;
+            }
+
+            isUploading = false;
+            btn.disabled = false;
+            btn.classList.remove("opacity-50");
+        }
+
+        async function askQuestion() {
+            if (isQuerying) return;
+
+            const questionInput = document.getElementById("question");
+            const status = document.getElementById("queryStatus");
+            const btn = document.getElementById("askBtn");
+            const question = questionInput.value.trim();
+
+            if (!question) return;
+
+            isQuerying = true;
+            btn.disabled = true;
+            btn.classList.add("opacity-50");
+            status.innerHTML = spinner("Generating answer...");
+
+            try {
+                const response = await fetch("/query", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    status.innerHTML = `<span class="text-red-400">${data.detail}</span>`;
+                } else {
+                    status.innerHTML = "";
+                    addToHistory(question, data.answer);
+                }
+
+            } catch {
+                status.innerHTML = `<span class="text-red-400">Query failed.</span>`;
+            }
+
+            questionInput.value = "";
+            isQuerying = false;
+            btn.disabled = false;
+            btn.classList.remove("opacity-50");
+        }
+
+        function addToHistory(question, answer) {
+            const history = document.getElementById("history");
+
+            const block = document.createElement("div");
+            block.className = "bg-slate-800 p-4 rounded-xl border border-slate-700";
+
+            block.innerHTML = `
+        <p class="text-blue-400 font-semibold mb-2">Q: ${question}</p>
+        <pre class="text-gray-300 whitespace-pre-wrap">${answer}</pre>
+    `;
+
+            history.prepend(block);
+        }
+
+        function spinner(text) {
+            return `
+        <div class="flex items-center gap-2">
+            <div class="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <span>${text}</span>
+        </div>
+    `;
+        }
+    </script>
+
+</body>
+
+</html>

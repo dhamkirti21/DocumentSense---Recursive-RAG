@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+
+  app:
+    build: .
+    container_name: recursive_rag_app
+    ports:
+      - "8000:8000"
+    environment:
+      LLM_URL: http://host.docker.internal:11434/api/generate
+      EMBED_URL: http://host.docker.internal:11434/api/embeddings
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
