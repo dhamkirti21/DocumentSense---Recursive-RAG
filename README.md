@@ -1,4 +1,4 @@
-## 🚀 Recursive RAG Architecture
+## 🚀 DoucmentSense - Recursive RAG Architecture
 Production-Grade Multi-Hop Retrieval-Augmented Generation System
 A high-performance Recursive Retrieval-Augmented Generation (RAG) system engineered for multi-hop reasoning, improved factual grounding, and scalable deployment.
 
